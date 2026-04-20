@@ -17,6 +17,8 @@ ROLE_CITOYENS_ID = 1474571994094637157
 ROLE_AVERT_1_ID = 1482872715525492807
 ROLE_AVERT_2_ID = 1482872877513445396
 SALON_SANCTIONS_ID = 1474570131312218313
+CLASSEMENT_CHANNEL_ID = 1495810308780982384
+CLASSEMENT_MESSAGE_FILE = "classement_message.json"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -39,6 +41,21 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
+def load_classement_message():
+    try:
+        with open(CLASSEMENT_MESSAGE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_classement_message(data):
+    with open(CLASSEMENT_MESSAGE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+
 def normalize_text(text: str) -> str:
     text = text.casefold().strip()
     text = unicodedata.normalize("NFKD", text)
@@ -56,6 +73,58 @@ def normalize_text(text: str) -> str:
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r"[^a-z0-9]+", "-", text)
     return text.strip("-")
+
+
+def build_classement_embed(guild: discord.Guild):
+    data = load_data()
+    classement_data = [(user_id, points) for user_id, points in data.items() if points > 0]
+    classement_data.sort(key=lambda x: x[1], reverse=True)
+    classement_data = classement_data[:10]
+
+    if not classement_data:
+        description = "Aucun classement disponible pour le moment."
+    else:
+        lignes = []
+        medals = ["🥇", "🥈", "🥉"]
+
+        for index, (user_id, points) in enumerate(classement_data, start=1):
+            membre = guild.get_member(int(user_id))
+            nom = membre.display_name if membre else f"Utilisateur inconnu ({user_id})"
+
+            if index <= 3:
+                lignes.append(f"{medals[index - 1]} {nom} - `{points}/4000`")
+            else:
+                lignes.append(f"**{index}.** {nom} - `{points}/4000`")
+
+        description = "\n".join(lignes)
+
+    embed = discord.Embed(
+        title="🏆 Classement Farm",
+        description=description,
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Top des employés du Tabac")
+    return embed
+
+
+async def update_classement_message(guild: discord.Guild):
+    saved = load_classement_message()
+    channel_id = saved.get("channel_id")
+    message_id = saved.get("message_id")
+
+    if not channel_id or not message_id:
+        return
+
+    channel = guild.get_channel(channel_id)
+    if not channel:
+        return
+
+    try:
+        message = await channel.fetch_message(message_id)
+        embed = build_classement_embed(guild)
+        await message.edit(embed=embed)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return
 
 
 @bot.event
@@ -215,6 +284,7 @@ async def farm(interaction: discord.Interaction, quantite: int):
 
     data[user_id] += quantite
     save_data(data)
+    await update_classement_message(guild)
 
     total = data[user_id]
 
@@ -229,41 +299,39 @@ async def farm(interaction: discord.Interaction, quantite: int):
     )
 
 
-@bot.tree.command(name="classement", description="Afficher le classement du farm")
+@bot.tree.command(name="classement", description="Créer ou mettre à jour le classement du farm")
 async def classement(interaction: discord.Interaction):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
 
     guild = interaction.guild
-    data = load_data()
+    channel = guild.get_channel(CLASSEMENT_CHANNEL_ID)
 
-    classement_data = [(user_id, points) for user_id, points in data.items() if points > 0]
-    classement_data.sort(key=lambda x: x[1], reverse=True)
-    classement_data = classement_data[:10]
-
-    if not classement_data:
-        await interaction.followup.send("❌ Aucun classement disponible pour le moment.", ephemeral=True)
+    if not channel:
+        await interaction.followup.send("❌ Le salon classement est introuvable.", ephemeral=True)
         return
 
-    lignes = []
-    medals = ["🥇", "🥈", "🥉"]
+    embed = build_classement_embed(guild)
+    saved = load_classement_message()
+    message_id = saved.get("message_id")
 
-    for index, (user_id, points) in enumerate(classement_data, start=1):
-        membre = guild.get_member(int(user_id))
-        nom = membre.display_name if membre else f"Utilisateur inconnu ({user_id})"
+    if saved.get("channel_id") == CLASSEMENT_CHANNEL_ID and message_id:
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=embed)
+            await interaction.followup.send("✅ Le classement a été mis à jour.", ephemeral=True)
+            return
+        except discord.NotFound:
+            pass
+        except discord.HTTPException:
+            pass
 
-        if index <= 3:
-            lignes.append(f"{medals[index - 1]} {nom} - `{points}/4000`")
-        else:
-            lignes.append(f"**{index}.** {nom} - `{points}/4000`")
+    message = await channel.send(embed=embed)
+    save_classement_message({
+        "channel_id": channel.id,
+        "message_id": message.id
+    })
 
-    embed = discord.Embed(
-        title="🏆 Classement Farm",
-        description="\n".join(lignes),
-        color=discord.Color.gold()
-    )
-    embed.set_footer(text="Top des employés du Tabac")
-
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send("✅ Le classement automatique a été créé.", ephemeral=True)
 
 
 @bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
@@ -278,6 +346,7 @@ async def reset(interaction: discord.Interaction, membre: discord.Member):
 
     data[user_id] = 0
     save_data(data)
+    await update_classement_message(interaction.guild)
 
     await interaction.response.send_message(
         f"✅ Le cota de {membre.mention} a été réinitialisé à 0 !",
