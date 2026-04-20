@@ -14,6 +14,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     await bot.tree.sync()
+    await bot.tree.sync(guild=discord.Object(id=1474559198544138391))
     print(f"Bot connecté : {bot.user}")
 
 @bot.tree.command(name="recrute", description="Recruter un membre dans le Tabac")
@@ -34,15 +35,10 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
         await interaction.response.send_message("❌ Rôles introuvables !", ephemeral=True)
         return
 
-    # Ajouter les rôles
     await membre.add_roles(role_tabac, role_vendeur)
-
-    # Renommer et déplacer le ticket
     await ticket.edit(name=f"rapport-{membre.display_name.lower()}", category=categorie)
 
-    # Envoyer les 2 messages
     await interaction.response.defer()
-
     await interaction.followup.send("Les rôles de Tabac ont bien été attribuer ! ✅")
 
     await interaction.channel.send(
@@ -53,5 +49,65 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
         f"<#1482797251280638164>\n"
         f"<#1474570039716741282>"
     )
+
+@bot.tree.command(name="demote", description="Retirer les rôles Tabac d'un membre")
+@app_commands.describe(membre="Le membre à démoter", raison="La raison du demote")
+async def demote(interaction: discord.Interaction, membre: discord.Member, raison: str):
+
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+        return
+
+    guild = bot.get_guild(1474559198544138391)
+
+    role_tabac = guild.get_role(1474565904011497522)
+    role_vendeur = guild.get_role(1474562293198098717)
+    role_citoyens = guild.get_role(1474571994094637157)
+
+    await membre.remove_roles(role_tabac, role_vendeur)
+    await membre.add_roles(role_citoyens)
+
+    salon = guild.get_channel(1474570131312218313)
+
+    await salon.send(
+        f"# Avertissement :\n"
+        f"* Personnes : {membre.mention}\n"
+        f"* Raison : {raison}\n"
+        f"* Sanction : Demote"
+    )
+
+    await interaction.response.send_message("✅ Le membre a bien été démote !", ephemeral=True)
+
+@bot.tree.command(name="avert", description="Donner un avertissement à un membre")
+@app_commands.describe(membre="Le membre à avertir", raison="La raison de l'avertissement", numero="Le numéro de l'avertissement")
+@app_commands.choices(numero=[
+    app_commands.Choice(name="Avertissement 1", value="1"),
+    app_commands.Choice(name="Avertissement 2", value="2"),
+])
+async def avert(interaction: discord.Interaction, membre: discord.Member, raison: str, numero: str):
+
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+        return
+
+    guild = bot.get_guild(1474559198544138391)
+
+    if numero == "1":
+        role_avert = guild.get_role(1482872715525492807)
+    else:
+        role_avert = guild.get_role(1482872877513445396)
+
+    await membre.add_roles(role_avert)
+
+    salon = guild.get_channel(1474570131312218313)
+
+    await salon.send(
+        f"# Avertissement :\n"
+        f"* Personne : {membre.mention}\n"
+        f"* Raison : {raison}\n"
+        f"* Sanction : Avertissement {numero}"
+    )
+
+    await interaction.response.send_message(f"✅ Avertissement {numero} donné !", ephemeral=True)
 
 bot.run(os.getenv("TOKEN"))
