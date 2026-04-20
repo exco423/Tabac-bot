@@ -9,6 +9,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+GUILD_ID = 1474559198544138391
+CATEGORY_RAPPORT_ID = 1474807318997897487
+ROLE_TABAC_ID = 1474565904011497522
+ROLE_VENDEUR_ID = 1474562293198098717
+ROLE_CITOYENS_ID = 1474571994094637157
+ROLE_AVERT_1_ID = 1482872715525492807
+ROLE_AVERT_2_ID = 1482872877513445396
+SALON_SANCTIONS_ID = 1474570131312218313
+
 intents = discord.Intents.default()
 intents.members = True
 
@@ -16,13 +25,18 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 def load_data():
-    with open("data.json", "r") as f:
-        return json.load(f)
+    try:
+        with open("data.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
 
 
 def save_data(data):
-    with open("data.json", "w") as f:
-        json.dump(data, f)
+    with open("data.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 def normalize_text(text: str) -> str:
@@ -46,8 +60,12 @@ def normalize_text(text: str) -> str:
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    await bot.tree.sync(guild=discord.Object(id=1474559198544138391))
+    try:
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"{len(synced)} commande(s) synchronisée(s) sur le serveur.")
+    except Exception as e:
+        print(f"Erreur sync : {e}")
+
     print(f"Bot connecté : {bot.user}")
 
 
@@ -58,21 +76,20 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
 
-    guild = bot.get_guild(1474559198544138391)
-    categorie = guild.get_channel(1474807318997897487)
+    guild = interaction.guild
+    categorie = guild.get_channel(CATEGORY_RAPPORT_ID)
+    role_tabac = guild.get_role(ROLE_TABAC_ID)
+    role_vendeur = guild.get_role(ROLE_VENDEUR_ID)
 
-    role_tabac = guild.get_role(1474565904011497522)
-    role_vendeur = guild.get_role(1474562293198098717)
-
-    if not role_tabac or not role_vendeur:
-        await interaction.response.send_message("❌ Rôles introuvables !", ephemeral=True)
+    if not categorie or not role_tabac or not role_vendeur:
+        await interaction.response.send_message("❌ Catégorie ou rôles introuvables !", ephemeral=True)
         return
 
     await membre.add_roles(role_tabac, role_vendeur)
     await ticket.edit(name=f"rapport-{normalize_text(membre.display_name)}", category=categorie)
 
-    await interaction.response.defer()
-    await interaction.followup.send("Les rôles de Tabac ont bien été attribuer ! ✅")
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send("✅ Les rôles de Tabac ont bien été attribués !", ephemeral=True)
 
     await interaction.channel.send(
         f"Bien joué {membre.mention}, tu as été recruté dans le Tabac ! 🚬\n"
@@ -91,20 +108,22 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
 
-    guild = bot.get_guild(1474559198544138391)
+    guild = interaction.guild
+    role_tabac = guild.get_role(ROLE_TABAC_ID)
+    role_vendeur = guild.get_role(ROLE_VENDEUR_ID)
+    role_citoyens = guild.get_role(ROLE_CITOYENS_ID)
+    salon = guild.get_channel(SALON_SANCTIONS_ID)
 
-    role_tabac = guild.get_role(1474565904011497522)
-    role_vendeur = guild.get_role(1474562293198098717)
-    role_citoyens = guild.get_role(1474571994094637157)
+    if not role_tabac or not role_vendeur or not role_citoyens or not salon:
+        await interaction.response.send_message("❌ Rôles ou salon introuvables !", ephemeral=True)
+        return
 
     await membre.remove_roles(role_tabac, role_vendeur)
     await membre.add_roles(role_citoyens)
 
-    salon = guild.get_channel(1474570131312218313)
-
     await salon.send(
         f"# Avertissement :\n"
-        f"* Personnes : {membre.mention}\n"
+        f"* Personne : {membre.mention}\n"
         f"* Raison : {raison}\n"
         f"* Sanction : Demote"
     )
@@ -123,16 +142,19 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
 
-    guild = bot.get_guild(1474559198544138391)
+    guild = interaction.guild
+    salon = guild.get_channel(SALON_SANCTIONS_ID)
 
     if numero == "1":
-        role_avert = guild.get_role(1482872715525492807)
+        role_avert = guild.get_role(ROLE_AVERT_1_ID)
     else:
-        role_avert = guild.get_role(1482872877513445396)
+        role_avert = guild.get_role(ROLE_AVERT_2_ID)
+
+    if not role_avert or not salon:
+        await interaction.response.send_message("❌ Rôle ou salon introuvable !", ephemeral=True)
+        return
 
     await membre.add_roles(role_avert)
-
-    salon = guild.get_channel(1474570131312218313)
 
     await salon.send(
         f"# Avertissement :\n"
@@ -147,8 +169,12 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
 @bot.tree.command(name="farm", description="Ajouter des points de farm")
 @app_commands.describe(quantite="La quantité farmée")
 async def farm(interaction: discord.Interaction, quantite: int):
-    guild = bot.get_guild(1474559198544138391)
-    role_tabac = guild.get_role(1474565904011497522)
+    guild = interaction.guild
+    role_tabac = guild.get_role(ROLE_TABAC_ID)
+
+    if not role_tabac:
+        await interaction.response.send_message("❌ Le rôle Tabac est introuvable !", ephemeral=True)
+        return
 
     if role_tabac not in interaction.user.roles:
         await interaction.response.send_message("❌ Tu n'as pas le rôle Tabac !", ephemeral=True)
@@ -205,7 +231,9 @@ async def farm(interaction: discord.Interaction, quantite: int):
 
 @bot.tree.command(name="classement", description="Afficher le classement du farm")
 async def classement(interaction: discord.Interaction):
-    guild = bot.get_guild(1474559198544138391)
+    await interaction.response.defer()
+
+    guild = interaction.guild
     data = load_data()
 
     classement_data = [(user_id, points) for user_id, points in data.items() if points > 0]
@@ -213,7 +241,7 @@ async def classement(interaction: discord.Interaction):
     classement_data = classement_data[:10]
 
     if not classement_data:
-        await interaction.response.send_message("❌ Aucun classement disponible pour le moment.", ephemeral=True)
+        await interaction.followup.send("❌ Aucun classement disponible pour le moment.", ephemeral=True)
         return
 
     lignes = []
@@ -235,7 +263,7 @@ async def classement(interaction: discord.Interaction):
     )
     embed.set_footer(text="Top des employés du Tabac")
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
@@ -248,11 +276,13 @@ async def reset(interaction: discord.Interaction, membre: discord.Member):
     data = load_data()
     user_id = str(membre.id)
 
-    if user_id in data:
-        data[user_id] = 0
-        save_data(data)
+    data[user_id] = 0
+    save_data(data)
 
-    await interaction.response.send_message(f"✅ Le cota de {membre.mention} a été réinitialisé !", ephemeral=True)
+    await interaction.response.send_message(
+        f"✅ Le cota de {membre.mention} a été réinitialisé à 0 !",
+        ephemeral=True
+    )
 
 
 bot.run(os.getenv("TOKEN"))
