@@ -142,9 +142,12 @@ async def farm(interaction: discord.Interaction, quantite: int):
     total = data[user_id]
 
     rapport_channel = None
+    import unicodedata
     pseudo = interaction.user.display_name.lower()
-    pseudo = pseudo.replace(' ', '-')
-    pseudo = ''.join(c for c in pseudo if ord(c) < 128)
+    pseudo = unicodedata.normalize('NFKD', pseudo)
+    pseudo = ''.join(c for c in pseudo if unicodedata.category(c) != 'Mn')
+    pseudo = pseudo.replace(' ', '-').replace('.', '')
+    pseudo = ''.join(c if c.isalnum() or c == '-' else '' for c in pseudo)
     for channel in guild.text_channels:
         if channel.name == f"rapport-{pseudo}":
             rapport_channel = channel
