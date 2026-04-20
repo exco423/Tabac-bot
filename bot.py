@@ -142,7 +142,7 @@ async def farm(interaction: discord.Interaction, quantite: int):
     total = data[user_id]
 
     rapport_channel = None
-    pseudo = interaction.user.display_name.lower()
+    pseudo = interaction.user.display_name.lower().replace(' ', '-')
     for channel in guild.text_channels:
         if channel.name == f"rapport-{pseudo}":
             rapport_channel = channel
