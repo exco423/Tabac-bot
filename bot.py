@@ -203,6 +203,41 @@ async def farm(interaction: discord.Interaction, quantite: int):
     )
 
 
+@bot.tree.command(name="classement", description="Afficher le classement du farm")
+async def classement(interaction: discord.Interaction):
+    guild = bot.get_guild(1474559198544138391)
+    data = load_data()
+
+    classement_data = [(user_id, points) for user_id, points in data.items() if points > 0]
+    classement_data.sort(key=lambda x: x[1], reverse=True)
+    classement_data = classement_data[:10]
+
+    if not classement_data:
+        await interaction.response.send_message("❌ Aucun classement disponible pour le moment.", ephemeral=True)
+        return
+
+    lignes = []
+    medals = ["🥇", "🥈", "🥉"]
+
+    for index, (user_id, points) in enumerate(classement_data, start=1):
+        membre = guild.get_member(int(user_id))
+        nom = membre.display_name if membre else f"Utilisateur inconnu ({user_id})"
+
+        if index <= 3:
+            lignes.append(f"{medals[index - 1]} {nom} - `{points}/4000`")
+        else:
+            lignes.append(f"**{index}.** {nom} - `{points}/4000`")
+
+    embed = discord.Embed(
+        title="🏆 Classement Farm",
+        description="\n".join(lignes),
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Top des employés du Tabac")
+
+    await interaction.response.send_message(embed=embed)
+
+
 @bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
 @app_commands.describe(membre="Le membre à réinitialiser")
 async def reset(interaction: discord.Interaction, membre: discord.Member):
