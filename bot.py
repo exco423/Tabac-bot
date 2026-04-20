@@ -142,7 +142,9 @@ async def farm(interaction: discord.Interaction, quantite: int):
     total = data[user_id]
 
     rapport_channel = None
-    pseudo = interaction.user.display_name.lower().replace(' ', '-')
+    pseudo = interaction.user.display_name.lower()
+    pseudo = pseudo.replace(' ', '-')
+    pseudo = ''.join(c for c in pseudo if ord(c) < 128)
     for channel in guild.text_channels:
         if channel.name == f"rapport-{pseudo}":
             rapport_channel = channel
@@ -158,5 +160,20 @@ async def farm(interaction: discord.Interaction, quantite: int):
     )
 
     await interaction.response.send_message(f"✅ {quantite} ajouté ! Total : {total}/4000", ephemeral=True)
+@bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
+@app_commands.describe(membre="Le membre à réinitialiser")
+async def reset(interaction: discord.Interaction, membre: discord.Member):
 
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+        return
+
+    data = load_data()
+    user_id = str(membre.id)
+
+    if user_id in data:
+        data[user_id] = 0
+        save_data(data)
+
+    await interaction.response.send_message(f"✅ Le cota de {membre.mention} a été réinitialisé !", ephemeral=True)
 bot.run(os.getenv("TOKEN"))
