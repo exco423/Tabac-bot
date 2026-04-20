@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import json
+import re
+import unicodedata
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,13 +14,35 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
 def load_data():
     with open("data.json", "r") as f:
         return json.load(f)
 
+
 def save_data(data):
     with open("data.json", "w") as f:
         json.dump(data, f)
+
+
+def normalize_text(text: str) -> str:
+    text = text.casefold().strip()
+    text = unicodedata.normalize("NFKD", text)
+
+    replacements = {
+        "ı": "i",
+        "İ": "i",
+        "ø": "o",
+        "œ": "oe",
+        "æ": "ae",
+        "ß": "ss",
+    }
+
+    text = "".join(replacements.get(c, c) for c in text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")
+
 
 @bot.event
 async def on_ready():
@@ -26,10 +50,10 @@ async def on_ready():
     await bot.tree.sync(guild=discord.Object(id=1474559198544138391))
     print(f"Bot connecté : {bot.user}")
 
+
 @bot.tree.command(name="recrute", description="Recruter un membre dans le Tabac")
 @app_commands.describe(membre="Le membre à recruter", ticket="Le ticket de la personne")
 async def recrute(interaction: discord.Interaction, membre: discord.Member, ticket: discord.TextChannel):
-
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
@@ -45,7 +69,7 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
         return
 
     await membre.add_roles(role_tabac, role_vendeur)
-    await ticket.edit(name=f"rapport-{membre.display_name.lower()}", category=categorie)
+    await ticket.edit(name=f"rapport-{normalize_text(membre.display_name)}", category=categorie)
 
     await interaction.response.defer()
     await interaction.followup.send("Les rôles de Tabac ont bien été attribuer ! ✅")
@@ -59,10 +83,10 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
         f"<#1474570039716741282>"
     )
 
+
 @bot.tree.command(name="demote", description="Retirer les rôles Tabac d'un membre")
 @app_commands.describe(membre="Le membre à démoter", raison="La raison du demote")
 async def demote(interaction: discord.Interaction, membre: discord.Member, raison: str):
-
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
@@ -87,6 +111,7 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
 
     await interaction.response.send_message("✅ Le membre a bien été démote !", ephemeral=True)
 
+
 @bot.tree.command(name="avert", description="Donner un avertissement à un membre")
 @app_commands.describe(membre="Le membre à avertir", raison="La raison de l'avertissement", numero="Le numéro de l'avertissement")
 @app_commands.choices(numero=[
@@ -94,7 +119,6 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
     app_commands.Choice(name="Avertissement 2", value="2"),
 ])
 async def avert(interaction: discord.Interaction, membre: discord.Member, raison: str, numero: str):
-
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
@@ -119,15 +143,42 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
 
     await interaction.response.send_message(f"✅ Avertissement {numero} donné !", ephemeral=True)
 
+
 @bot.tree.command(name="farm", description="Ajouter des points de farm")
 @app_commands.describe(quantite="La quantité farmée")
 async def farm(interaction: discord.Interaction, quantite: int):
-
     guild = bot.get_guild(1474559198544138391)
     role_tabac = guild.get_role(1474565904011497522)
 
     if role_tabac not in interaction.user.roles:
         await interaction.response.send_message("❌ Tu n'as pas le rôle Tabac !", ephemeral=True)
+        return
+
+    if quantite <= 0:
+        await interaction.response.send_message("❌ La quantité doit être supérieure à 0 !", ephemeral=True)
+        return
+
+    pseudo_normalized = normalize_text(interaction.user.display_name)
+    expected_channel_name = f"rapport-{pseudo_normalized}"
+
+    rapport_channel = None
+    for channel in guild.text_channels:
+        if normalize_text(channel.name) == expected_channel_name:
+            rapport_channel = channel
+            break
+
+    if not rapport_channel:
+        await interaction.response.send_message(
+            f"❌ Ton salon rapport est introuvable ! Nom recherché : `{expected_channel_name}`",
+            ephemeral=True
+        )
+        return
+
+    if interaction.channel.id != rapport_channel.id:
+        await interaction.response.send_message(
+            f"❌ Tu dois faire la commande dans ton salon : {rapport_channel.mention}",
+            ephemeral=True
+        )
         return
 
     data = load_data()
@@ -141,32 +192,20 @@ async def farm(interaction: discord.Interaction, quantite: int):
 
     total = data[user_id]
 
-    rapport_channel = None
-    import unicodedata
-    pseudo = interaction.user.display_name.lower()
-    pseudo = unicodedata.normalize('NFKD', pseudo)
-    pseudo = ''.join(c for c in pseudo if unicodedata.category(c) != 'Mn')
-    pseudo = pseudo.replace(' ', '-').replace('.', '')
-    pseudo = ''.join(c if c.isalnum() or c == '-' else '' for c in pseudo)
-    for channel in guild.text_channels:
-        if channel.name == f"rapport-{pseudo}":
-            rapport_channel = channel
-            break
-
-    if not rapport_channel:
-        await interaction.response.send_message("❌ Ton salon rapport est introuvable !", ephemeral=True)
-        return
-
     await rapport_channel.send(
         f"# Cota\n"
         f"* {total}/4000"
     )
 
-    await interaction.response.send_message(f"✅ {quantite} ajouté ! Total : {total}/4000", ephemeral=True)
+    await interaction.response.send_message(
+        f"✅ {quantite} ajouté ! Total : {total}/4000",
+        ephemeral=True
+    )
+
+
 @bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
 @app_commands.describe(membre="Le membre à réinitialiser")
 async def reset(interaction: discord.Interaction, membre: discord.Member):
-
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
         return
@@ -179,4 +218,6 @@ async def reset(interaction: discord.Interaction, membre: discord.Member):
         save_data(data)
 
     await interaction.response.send_message(f"✅ Le cota de {membre.mention} a été réinitialisé !", ephemeral=True)
+
+
 bot.run(os.getenv("TOKEN"))
