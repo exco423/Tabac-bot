@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,6 +11,14 @@ intents = discord.Intents.default()
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+def load_data():
+    with open("data.json", "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open("data.json", "w") as f:
+        json.dump(data, f)
 
 @bot.event
 async def on_ready():
@@ -109,5 +118,45 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
     )
 
     await interaction.response.send_message(f"✅ Avertissement {numero} donné !", ephemeral=True)
+
+@bot.tree.command(name="farm", description="Ajouter des points de farm")
+@app_commands.describe(quantite="La quantité farmée")
+async def farm(interaction: discord.Interaction, quantite: int):
+
+    guild = bot.get_guild(1474559198544138391)
+    role_tabac = guild.get_role(1474565904011497522)
+
+    if role_tabac not in interaction.user.roles:
+        await interaction.response.send_message("❌ Tu n'as pas le rôle Tabac !", ephemeral=True)
+        return
+
+    data = load_data()
+    user_id = str(interaction.user.id)
+
+    if user_id not in data:
+        data[user_id] = 0
+
+    data[user_id] += quantite
+    save_data(data)
+
+    total = data[user_id]
+
+    rapport_channel = None
+    pseudo = interaction.user.display_name.lower()
+    for channel in guild.text_channels:
+        if channel.name == f"rapport-{pseudo}":
+            rapport_channel = channel
+            break
+
+    if not rapport_channel:
+        await interaction.response.send_message("❌ Ton salon rapport est introuvable !", ephemeral=True)
+        return
+
+    await rapport_channel.send(
+        f"# Cota\n"
+        f"* {total}/4000"
+    )
+
+    await interaction.response.send_message(f"✅ {quantite} ajouté ! Total : {total}/4000", ephemeral=True)
 
 bot.run(os.getenv("TOKEN"))
