@@ -14,6 +14,7 @@ CATEGORY_RAPPORT_ID = 1474807318997897487
 ROLE_TABAC_ID = 1474565904011497522
 ROLE_VENDEUR_ID = 1474562293198098717
 ROLE_CITOYENS_ID = 1474571994094637157
+ROLE_CITOYENS_ALL_ID = 1499759422954799204
 ROLE_AVERT_1_ID = 1482872715525492807
 ROLE_AVERT_2_ID = 1482872877513445396
 SALON_SANCTIONS_ID = 1474570131312218313
@@ -198,6 +199,45 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
     )
 
     await interaction.response.send_message("✅ Le membre a bien été démote !", ephemeral=True)
+
+
+@bot.tree.command(name="citoyens", description="Donner le rôle Citoyens à tous les membres du serveur")
+async def citoyens(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.followup.send("❌ Tu n'as pas la permission !", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    role_citoyens = guild.get_role(ROLE_CITOYENS_ALL_ID)
+
+    if not role_citoyens:
+        await interaction.followup.send("❌ Le rôle Citoyens est introuvable !", ephemeral=True)
+        return
+
+    ajoutes = 0
+    deja = 0
+    erreurs = 0
+
+    for membre in guild.members:
+        if role_citoyens in membre.roles:
+            deja += 1
+            continue
+
+        try:
+            await membre.add_roles(role_citoyens, reason=f"Commande /citoyens par {interaction.user}")
+            ajoutes += 1
+        except (discord.Forbidden, discord.HTTPException):
+            erreurs += 1
+
+    await interaction.followup.send(
+        f"✅ Terminé !\n"
+        f"Rôle ajouté à **{ajoutes}** membre(s).\n"
+        f"Déjà présent sur **{deja}** membre(s).\n"
+        f"Erreur sur **{erreurs}** membre(s).",
+        ephemeral=True
+    )
 
 
 @bot.tree.command(name="avert", description="Donner un avertissement à un membre")
