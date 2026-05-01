@@ -19,7 +19,7 @@ ROLE_AVERT_2_ID = 1482872877513445396
 SALON_SANCTIONS_ID = 1474570131312218313
 CLASSEMENT_CHANNEL_ID = 1495810308780982384
 CLASSEMENT_MESSAGE_FILE = "classement_message.json"
-ROLE_CITOYENS_ALL_ID = 1499759422954799204
+ROLE_CITOYENS_ALL_ID = 1474571994094637157
 
 intents = discord.Intents.default()
 intents.members = True
@@ -104,9 +104,11 @@ async def update_classement_message(guild: discord.Guild):
     message_id = saved.get("message_id")
     if not channel_id or not message_id:
         return
+
     channel = guild.get_channel(channel_id)
     if not channel:
         return
+
     try:
         message = await channel.fetch_message(message_id)
         embed = build_classement_embed(guild)
@@ -118,10 +120,13 @@ async def update_classement_message(guild: discord.Guild):
 @bot.event
 async def on_ready():
     try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        guild = discord.Object(id=GUILD_ID)
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
         print(f"{len(synced)} commande(s) synchronisée(s) sur le serveur.")
     except Exception as e:
         print(f"Erreur sync : {e}")
+
     print(f"Bot connecté : {bot.user}")
 
 
