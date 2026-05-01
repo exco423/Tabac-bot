@@ -14,12 +14,12 @@ CATEGORY_RAPPORT_ID = 1474807318997897487
 ROLE_TABAC_ID = 1474565904011497522
 ROLE_VENDEUR_ID = 1474562293198098717
 ROLE_CITOYENS_ID = 1474571994094637157
-ROLE_CITOYENS_ALL_ID = 1499759422954799204
 ROLE_AVERT_1_ID = 1482872715525492807
 ROLE_AVERT_2_ID = 1482872877513445396
 SALON_SANCTIONS_ID = 1474570131312218313
 CLASSEMENT_CHANNEL_ID = 1495810308780982384
 CLASSEMENT_MESSAGE_FILE = "classement_message.json"
+ROLE_CITOYENS_ALL_ID = 1499759422954799204
 
 intents = discord.Intents.default()
 intents.members = True
@@ -60,16 +60,9 @@ def save_classement_message(data):
 def normalize_text(text: str) -> str:
     text = text.casefold().strip()
     text = unicodedata.normalize("NFKD", text)
-
     replacements = {
-        "ı": "i",
-        "İ": "i",
-        "ø": "o",
-        "œ": "oe",
-        "æ": "ae",
-        "ß": "ss",
+        "ı": "i", "İ": "i", "ø": "o", "œ": "oe", "æ": "ae", "ß": "ss",
     }
-
     text = "".join(replacements.get(c, c) for c in text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r"[^a-z0-9]+", "-", text)
@@ -87,16 +80,13 @@ def build_classement_embed(guild: discord.Guild):
     else:
         lignes = []
         medals = ["🥇", "🥈", "🥉"]
-
         for index, (user_id, points) in enumerate(classement_data, start=1):
             membre = guild.get_member(int(user_id))
             nom = membre.display_name if membre else f"Utilisateur inconnu ({user_id})"
-
             if index <= 3:
                 lignes.append(f"{medals[index - 1]} {nom} - `{points}/4000`")
             else:
                 lignes.append(f"**{index}.** {nom} - `{points}/4000`")
-
         description = "\n".join(lignes)
 
     embed = discord.Embed(
@@ -112,14 +102,11 @@ async def update_classement_message(guild: discord.Guild):
     saved = load_classement_message()
     channel_id = saved.get("channel_id")
     message_id = saved.get("message_id")
-
     if not channel_id or not message_id:
         return
-
     channel = guild.get_channel(channel_id)
     if not channel:
         return
-
     try:
         message = await channel.fetch_message(message_id)
         embed = build_classement_embed(guild)
@@ -135,7 +122,6 @@ async def on_ready():
         print(f"{len(synced)} commande(s) synchronisée(s) sur le serveur.")
     except Exception as e:
         print(f"Erreur sync : {e}")
-
     print(f"Bot connecté : {bot.user}")
 
 
@@ -199,45 +185,6 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
     )
 
     await interaction.response.send_message("✅ Le membre a bien été démote !", ephemeral=True)
-
-
-@bot.tree.command(name="citoyens", description="Donner le rôle Citoyens à tous les membres du serveur")
-async def citoyens(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.followup.send("❌ Tu n'as pas la permission !", ephemeral=True)
-        return
-
-    guild = interaction.guild
-    role_citoyens = guild.get_role(ROLE_CITOYENS_ALL_ID)
-
-    if not role_citoyens:
-        await interaction.followup.send("❌ Le rôle Citoyens est introuvable !", ephemeral=True)
-        return
-
-    ajoutes = 0
-    deja = 0
-    erreurs = 0
-
-    for membre in guild.members:
-        if role_citoyens in membre.roles:
-            deja += 1
-            continue
-
-        try:
-            await membre.add_roles(role_citoyens, reason=f"Commande /citoyens par {interaction.user}")
-            ajoutes += 1
-        except (discord.Forbidden, discord.HTTPException):
-            erreurs += 1
-
-    await interaction.followup.send(
-        f"✅ Terminé !\n"
-        f"Rôle ajouté à **{ajoutes}** membre(s).\n"
-        f"Déjà présent sur **{deja}** membre(s).\n"
-        f"Erreur sur **{erreurs}** membre(s).",
-        ephemeral=True
-    )
 
 
 @bot.tree.command(name="avert", description="Donner un avertissement à un membre")
@@ -392,6 +339,30 @@ async def reset(interaction: discord.Interaction, membre: discord.Member):
         f"✅ Le cota de {membre.mention} a été réinitialisé à 0 !",
         ephemeral=True
     )
+
+
+@bot.tree.command(name="citoyens", description="Donner le rôle Citoyens à tous les membres du serveur")
+async def citoyens(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild
+    role = guild.get_role(ROLE_CITOYENS_ALL_ID)
+
+    if not role:
+        await interaction.followup.send("❌ Rôle introuvable !", ephemeral=True)
+        return
+
+    compteur = 0
+    for membre in guild.members:
+        if role not in membre.roles and not membre.bot:
+            await membre.add_roles(role)
+            compteur += 1
+
+    await interaction.followup.send(f"✅ Rôle Citoyens donné à **{compteur}** membres !", ephemeral=True)
 
 
 bot.run(os.getenv("TOKEN"))
