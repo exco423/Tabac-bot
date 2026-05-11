@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import os
 import json
 import re
@@ -25,8 +24,9 @@ CLASSEMENT_MESSAGE_FILE = os.path.join(BASE_DIR, "classement_message.json")
 
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="+", intents=intents)
 
 
 def load_data():
@@ -132,41 +132,30 @@ async def update_classement_message(guild: discord.Guild):
 
 @bot.event
 async def on_ready():
-    try:
-        guild = discord.Object(id=GUILD_ID)
-        bot.tree.copy_global_to(guild=guild)
-        synced = await bot.tree.sync(guild=guild)
-        print(f"{len(synced)} commande(s) synchronisée(s) sur le serveur.")
-    except Exception as e:
-        print(f"Erreur sync : {e}")
-
     print(f"Bot connecté : {bot.user}")
 
 
-@bot.tree.command(name="recrute", description="Recruter un membre dans le Tabac")
-@app_commands.describe(membre="Le membre à recruter", ticket="Le ticket de la personne")
-async def recrute(interaction: discord.Interaction, membre: discord.Member, ticket: discord.TextChannel):
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+@bot.command(name="recrute")
+async def recrute(ctx, membre: discord.Member, ticket: discord.TextChannel):
+    if not ctx.author.guild_permissions.manage_roles:
+        await ctx.send("❌ Tu n'as pas la permission !")
         return
 
-    await interaction.response.defer(ephemeral=True)
-
-    guild = interaction.guild
+    guild = ctx.guild
     categorie = guild.get_channel(CATEGORY_RAPPORT_ID)
     role_tabac = guild.get_role(ROLE_TABAC_ID)
     role_vendeur = guild.get_role(ROLE_VENDEUR_ID)
 
     if not categorie or not role_tabac or not role_vendeur:
-        await interaction.followup.send("❌ Catégorie ou rôles introuvables !", ephemeral=True)
+        await ctx.send("❌ Catégorie ou rôles introuvables !")
         return
 
     await membre.add_roles(role_tabac, role_vendeur)
     await ticket.edit(name=f"rapport-{normalize_text(membre.display_name)}", category=categorie)
 
-    await interaction.followup.send("✅ Les rôles de Tabac ont bien été attribués !", ephemeral=True)
+    await ctx.send("✅ Les rôles de Tabac ont bien été attribués !")
 
-    await interaction.channel.send(
+    await ctx.channel.send(
         f"Bien joué {membre.mention}, tu as été recruté dans le Tabac ! 🚬\n"
         f"Maintenant je te laisse aller voir tout ça :\n"
         f"<#1474569375901155448>\n"
@@ -176,14 +165,13 @@ async def recrute(interaction: discord.Interaction, membre: discord.Member, tick
     )
 
 
-@bot.tree.command(name="demote", description="Retirer les rôles Tabac d'un membre")
-@app_commands.describe(membre="Le membre à démoter", raison="La raison du demote")
-async def demote(interaction: discord.Interaction, membre: discord.Member, raison: str):
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+@bot.command(name="demote")
+async def demote(ctx, membre: discord.Member, *, raison: str):
+    if not ctx.author.guild_permissions.manage_roles:
+        await ctx.send("❌ Tu n'as pas la permission !")
         return
 
-    guild = interaction.guild
+    guild = ctx.guild
     role_tabac = guild.get_role(ROLE_TABAC_ID)
     role_vendeur = guild.get_role(ROLE_VENDEUR_ID)
     role_citoyens = guild.get_role(ROLE_CITOYENS_ID)
@@ -201,10 +189,7 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
         manquants.append(f"- Salon sanctions : `{SALON_SANCTIONS_ID}`")
 
     if manquants:
-        await interaction.response.send_message(
-            "❌ Introuvable :\n" + "\n".join(manquants),
-            ephemeral=True
-        )
+        await ctx.send("❌ Introuvable :\n" + "\n".join(manquants))
         return
 
     await membre.remove_roles(role_tabac, role_vendeur)
@@ -217,28 +202,25 @@ async def demote(interaction: discord.Interaction, membre: discord.Member, raiso
         f"* Sanction : Demote"
     )
 
-    await interaction.response.send_message("✅ Le membre a bien été démote !", ephemeral=True)
+    await ctx.send("✅ Le membre a bien été démote !")
 
 
-@bot.tree.command(name="citoyens", description="Donner le rôle Citoyens à tous les membres du serveur")
-async def citoyens(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.followup.send("❌ Tu n'as pas la permission !", ephemeral=True)
+@bot.command(name="citoyens")
+async def citoyens(ctx):
+    if not ctx.author.guild_permissions.manage_roles:
+        await ctx.send("❌ Tu n'as pas la permission !")
         return
 
-    guild = interaction.guild
+    guild = ctx.guild
     if guild is None:
-        await interaction.followup.send("❌ Cette commande doit être utilisée dans le serveur.", ephemeral=True)
+        await ctx.send("❌ Cette commande doit être utilisée dans le serveur.")
         return
 
     role = guild.get_role(ROLE_CITOYENS_ID)
 
     if role is None:
-        await interaction.followup.send(
-            f"❌ Rôle introuvable.\nServeur : `{guild.name}` (`{guild.id}`)\nID recherché : `{ROLE_CITOYENS_ID}`",
-            ephemeral=True
+        await ctx.send(
+            f"❌ Rôle introuvable.\nServeur : `{guild.name}` (`{guild.id}`)\nID recherché : `{ROLE_CITOYENS_ID}`"
         )
         return
 
@@ -255,36 +237,30 @@ async def citoyens(interaction: discord.Interaction):
             continue
 
         try:
-            await membre.add_roles(role, reason=f"Commande /citoyens par {interaction.user}")
+            await membre.add_roles(role, reason=f"Commande +citoyens par {ctx.author}")
             ajoutes += 1
         except (discord.Forbidden, discord.HTTPException):
             erreurs += 1
 
-    await interaction.followup.send(
+    await ctx.send(
         f"✅ Terminé !\n"
         f"Ajoutés : **{ajoutes}**\n"
         f"Déjà présents : **{deja}**\n"
-        f"Erreurs : **{erreurs}**",
-        ephemeral=True
+        f"Erreurs : **{erreurs}**"
     )
 
 
-@bot.tree.command(name="avert", description="Donner un avertissement à un membre")
-@app_commands.describe(
-    membre="Le membre à avertir",
-    raison="La raison de l'avertissement",
-    numero="Le numéro de l'avertissement"
-)
-@app_commands.choices(numero=[
-    app_commands.Choice(name="Avertissement 1", value="1"),
-    app_commands.Choice(name="Avertissement 2", value="2"),
-])
-async def avert(interaction: discord.Interaction, membre: discord.Member, raison: str, numero: str):
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+@bot.command(name="avert")
+async def avert(ctx, membre: discord.Member, numero: str, *, raison: str):
+    if not ctx.author.guild_permissions.manage_roles:
+        await ctx.send("❌ Tu n'as pas la permission !")
         return
 
-    guild = interaction.guild
+    if numero not in ["1", "2"]:
+        await ctx.send("❌ Le numéro doit être `1` ou `2`.")
+        return
+
+    guild = ctx.guild
     salon = guild.get_channel(SALON_SANCTIONS_ID)
 
     if numero == "1":
@@ -293,7 +269,7 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
         role_avert = guild.get_role(ROLE_AVERT_2_ID)
 
     if not role_avert or not salon:
-        await interaction.response.send_message("❌ Rôle ou salon introuvable !", ephemeral=True)
+        await ctx.send("❌ Rôle ou salon introuvable !")
         return
 
     await membre.add_roles(role_avert)
@@ -305,28 +281,27 @@ async def avert(interaction: discord.Interaction, membre: discord.Member, raison
         f"* Sanction : Avertissement {numero}"
     )
 
-    await interaction.response.send_message(f"✅ Avertissement {numero} donné !", ephemeral=True)
+    await ctx.send(f"✅ Avertissement {numero} donné !")
 
 
-@bot.tree.command(name="farm", description="Ajouter des points de farm")
-@app_commands.describe(quantite="La quantité farmée")
-async def farm(interaction: discord.Interaction, quantite: int):
-    guild = interaction.guild
+@bot.command(name="farm")
+async def farm(ctx, quantite: int):
+    guild = ctx.guild
     role_tabac = guild.get_role(ROLE_TABAC_ID)
 
     if not role_tabac:
-        await interaction.response.send_message("❌ Le rôle Tabac est introuvable !", ephemeral=True)
+        await ctx.send("❌ Le rôle Tabac est introuvable !")
         return
 
-    if role_tabac not in interaction.user.roles:
-        await interaction.response.send_message("❌ Tu n'as pas le rôle Tabac !", ephemeral=True)
+    if role_tabac not in ctx.author.roles:
+        await ctx.send("❌ Tu n'as pas le rôle Tabac !")
         return
 
     if quantite <= 0:
-        await interaction.response.send_message("❌ La quantité doit être supérieure à 0 !", ephemeral=True)
+        await ctx.send("❌ La quantité doit être supérieure à 0 !")
         return
 
-    pseudo_normalized = normalize_text(interaction.user.display_name)
+    pseudo_normalized = normalize_text(ctx.author.display_name)
     expected_channel_name = f"rapport-{pseudo_normalized}"
 
     rapport_channel = None
@@ -336,21 +311,15 @@ async def farm(interaction: discord.Interaction, quantite: int):
             break
 
     if not rapport_channel:
-        await interaction.response.send_message(
-            f"❌ Ton salon rapport est introuvable ! Nom recherché : `{expected_channel_name}`",
-            ephemeral=True
-        )
+        await ctx.send(f"❌ Ton salon rapport est introuvable ! Nom recherché : `{expected_channel_name}`")
         return
 
-    if interaction.channel.id != rapport_channel.id:
-        await interaction.response.send_message(
-            f"❌ Tu dois faire la commande dans ton salon : {rapport_channel.mention}",
-            ephemeral=True
-        )
+    if ctx.channel.id != rapport_channel.id:
+        await ctx.send(f"❌ Tu dois faire la commande dans ton salon : {rapport_channel.mention}")
         return
 
     data = load_data()
-    user_id = str(interaction.user.id)
+    user_id = str(ctx.author.id)
 
     if user_id not in data:
         data[user_id] = 0
@@ -366,21 +335,16 @@ async def farm(interaction: discord.Interaction, quantite: int):
         f"* {total}/4000"
     )
 
-    await interaction.response.send_message(
-        f"✅ {quantite} ajouté ! Total : {total}/4000",
-        ephemeral=True
-    )
+    await ctx.send(f"✅ {quantite} ajouté ! Total : {total}/4000")
 
 
-@bot.tree.command(name="classement", description="Créer ou mettre à jour le classement du farm")
-async def classement(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    guild = interaction.guild
+@bot.command(name="classement")
+async def classement(ctx):
+    guild = ctx.guild
     channel = guild.get_channel(CLASSEMENT_CHANNEL_ID)
 
     if not channel:
-        await interaction.followup.send("❌ Le salon classement est introuvable.", ephemeral=True)
+        await ctx.send("❌ Le salon classement est introuvable.")
         return
 
     embed = build_classement_embed(guild)
@@ -391,7 +355,7 @@ async def classement(interaction: discord.Interaction):
         try:
             message = await channel.fetch_message(message_id)
             await message.edit(embed=embed)
-            await interaction.followup.send("✅ Le classement a été mis à jour.", ephemeral=True)
+            await ctx.send("✅ Le classement a été mis à jour.")
             return
         except discord.NotFound:
             pass
@@ -404,14 +368,13 @@ async def classement(interaction: discord.Interaction):
         "message_id": message.id
     })
 
-    await interaction.followup.send("✅ Le classement automatique a été créé.", ephemeral=True)
+    await ctx.send("✅ Le classement automatique a été créé.")
 
 
-@bot.tree.command(name="reset", description="Réinitialiser le cota d'un membre")
-@app_commands.describe(membre="Le membre à réinitialiser")
-async def reset(interaction: discord.Interaction, membre: discord.Member):
-    if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Tu n'as pas la permission !", ephemeral=True)
+@bot.command(name="reset")
+async def reset(ctx, membre: discord.Member):
+    if not ctx.author.guild_permissions.manage_roles:
+        await ctx.send("❌ Tu n'as pas la permission !")
         return
 
     data = load_data()
@@ -419,12 +382,9 @@ async def reset(interaction: discord.Interaction, membre: discord.Member):
 
     data[user_id] = 0
     save_data(data)
-    await update_classement_message(interaction.guild)
+    await update_classement_message(ctx.guild)
 
-    await interaction.response.send_message(
-        f"✅ Le cota de {membre.mention} a été réinitialisé à 0 !",
-        ephemeral=True
-    )
+    await ctx.send(f"✅ Le cota de {membre.mention} a été réinitialisé à 0 !")
 
 
 bot.run(os.getenv("TOKEN"))
